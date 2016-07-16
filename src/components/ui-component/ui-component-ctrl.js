@@ -84,7 +84,7 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                         }
                     })
                     me.formatTime = function (d) {
-                        return d3.time.format('%H:%M:%S')(new Date(d));
+                        return d3.time.format('%d.%m.%y %H:%M:%S')(new Date(d));
                     };
                 }
             }
