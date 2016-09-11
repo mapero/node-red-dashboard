@@ -131,6 +131,7 @@ RED.nodes.registerType('ui_base',{
         name: {value: ''},
         theme: {value: ''}
     },
+    hasUsers: false,
     paletteLabel: 'Dashboard',
     label: function() { return this.name || 'Node-RED Dashboard'; },
     oneditprepare: function() {
@@ -139,6 +140,13 @@ RED.nodes.registerType('ui_base',{
         var globalDashboardNode = null;
 
         function ensureDashboardNode(createMissing) {
+            if (globalDashboardNode !== null) {
+                // Check if it has been deleted beneath us
+                var n = RED.nodes.node(globalDashboardNode.id);
+                if (n===null) {
+                    globalDashboardNode = null;
+                }
+            }
             if (globalDashboardNode === null) {
                 RED.nodes.eachConfig(function(n) {
                     if (globalDashboardNode === null && n.type === 'ui_base') {
@@ -169,28 +177,13 @@ RED.nodes.registerType('ui_base',{
         $('<label>').html('Title').appendTo(divTitle);
         $('<input type="text" id="nr-db-field-title">').val("Node-RED Dashboard").css("width","calc(100% - 65px)")
             .change(function() {
-                ensureDashboardNode(true);
-                var currentTitle = globalDashboardNode.name;
-                if (currentTitle !== $(this).val()) {
+                if (!globalDashboardNode || globalDashboardNode.name !== $(this).val()) {
+                    ensureDashboardNode(true);
                     globalDashboardNode.name = $(this).val();
                     RED.nodes.dirty(true);
                 }
             })
             .appendTo(divTitle);
-
-        // var divUrl = $('<div>',{class:"form-row"}).appendTo(form);
-        // $('<label>').html('URL').appendTo(divUrl);
-        // $('<input type="text" id="nr-db-field-url">').css("width","calc(100% - 65px)")
-        //     .val("/url")
-        //     .change(function() {
-        //         ensureDashboardNode(true);
-        //         var currentUrl = globalDashboardNode.url;
-        //         if (currentUrl !== $(this).val()) {
-        //             globalDashboardNode.url = $(this).val();
-        //             RED.nodes.dirty(true);
-        //         }
-        //     })
-        //     .appendTo(divUrl);
 
         $('<a href="#" class="editor-button" style="margin-left: 10px;"><i class="fa fa-external-link"></i></a>')
             .click(function(evt) {
@@ -206,16 +199,13 @@ RED.nodes.registerType('ui_base',{
             '<option value="theme-dark">Dark</option>'+
             '</select>')
             .change(function() {
-                ensureDashboardNode(true);
-                var currentTheme = globalDashboardNode.theme;
-                if (currentTheme !== $(this).val()) {
+                if (!globalDashboardNode || globalDashboardNode.theme !== $(this).val()) {
+                    ensureDashboardNode(true);
                     globalDashboardNode.theme = $(this).val();
                     RED.nodes.dirty(true);
                 }
             })
             .appendTo(divTheme);
-
-
 
         var divTabs = $('<div>',{class:"form-row",style:"position:relative"}).appendTo(form);
         $('<label>').html('Tabs').appendTo(divTabs);
@@ -246,16 +236,18 @@ RED.nodes.registerType('ui_base',{
         var groupLists = {};
         var linkNodes = {};
 
-        function titleToggle(content,chevron) {
+        function titleToggle(id,content,chevron) {
             return function(evt) {
                 if (content.is(":visible")) {
                     content.slideUp();
                     chevron.css({"transform":"rotate(-90deg)"});
                     content.addClass('nr-db-sb-collapsed');
+                    listStates[id] = false;
                 } else {
                     content.slideDown();
                     chevron.css({"transform":""});
                     content.removeClass('nr-db-sb-collapsed');
+                    listStates[id] = true;
                 }
             };
         }
@@ -265,7 +257,6 @@ RED.nodes.registerType('ui_base',{
             addButton: false,
             addItem: function(container,i,tab) {
                 var newTab = false;
-                ensureDashboardNode(true);
                 if (!tab.node) {
                     tab.node = {
                         id: RED.nodes.id(),
@@ -274,18 +265,13 @@ RED.nodes.registerType('ui_base',{
                         users: [],
                         order: i+1,
                         name: "Tab "+(i+1),
-                        icon: "dashboard",
-                        base: globalDashboardNode.id
+                        icon: "dashboard"
                     };
                     listElements[tab.node.id] = container;
                     RED.nodes.add(tab.node);
                     tab.groups = [];
                     RED.nodes.dirty(true);
                     newTab = true;
-                } else if (tab.node.base != globalDashboardNode.id) {
-                    tab.node.base = globalDashboardNode.id;
-                    // Just in case anyone is trying this with <0.14.4
-                    RED.nodes.dirty(true);
                 }
                 if (RED.nodes.hasOwnProperty('updateConfigNodeUsers')) {
                     RED.nodes.updateConfigNodeUsers(tab.node);
@@ -304,14 +290,13 @@ RED.nodes.registerType('ui_base',{
 
                 var content = $('<div>',{class:"nr-db-sb-group-list-container"}).appendTo(container);
 
-                if (!newTab) {
-                    chevron.css("transform","rotate(-90deg)");
-                    content.addClass('nr-db-sb-collapsed').css('display','none');
-                }
                 if (listStates.hasOwnProperty(tabNode.id) && !listStates[tabNode.id]) {
                     content.hide();
                     chevron.css({"transform":"rotate(-90deg)"});
                     content.addClass('nr-db-sb-collapsed');
+                    listStates[tabNode.id] = false;
+                } else {
+                    listStates[tabNode.id] = true;
                 }
                 setTimeout(function() {
                     chevron.css({"transition": "transform 0.2s ease-in-out"});
@@ -338,6 +323,10 @@ RED.nodes.registerType('ui_base',{
                             RED.nodes.add(group.node);
                             group.widgets = [];
                             RED.nodes.dirty(true);
+                            if (RED.nodes.hasOwnProperty('updateConfigNodeUsers')) {
+                                RED.nodes.updateConfigNodeUsers(group.node);
+                            }
+
                         }
                         var groupNode = group.node;
                         elementParents[groupNode] = tabNode.id;
@@ -352,10 +341,13 @@ RED.nodes.registerType('ui_base',{
                         var editButton = $('<a href="#" class="editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> edit</a>').appendTo(buttonGroup);
 
                         var content = $('<div>',{class:"nr-db-sb-widget-list-container"}).appendTo(container);
-                        if (listStates.hasOwnProperty(groupNode.id) && !listStates[groupNode.id]) {
+                        if (!listStates.hasOwnProperty(groupNode.id) || !listStates[groupNode.id]) {
                             content.hide();
                             chevron.css({"transform":"rotate(-90deg)"});
                             content.addClass('nr-db-sb-collapsed');
+                            listStates[groupNode.id] = false;
+                        } else {
+                            listStates[groupNode.id] = true;
                         }
                         setTimeout(function() {
                             chevron.css({"transition": "transform 0.2s ease-in-out"});
@@ -429,7 +421,7 @@ RED.nodes.registerType('ui_base',{
                         if (groupNode.id) {
                             groupLists[groupNode.id] = ol;
                         }
-                        titleRow.click(titleToggle(content,chevron));
+                        titleRow.click(titleToggle(groupNode.id,content,chevron));
                         editButton.on('click',function(evt) {
                             RED.editor.editConfig("", groupNode.type, groupNode.id);
                             evt.stopPropagation();
@@ -468,10 +460,11 @@ RED.nodes.registerType('ui_base',{
                     }
                 });
                 ol.css("min-height","10px");
+
                 if (tabNode.id) {
                     tabLists[tabNode.id] = ol;
                 }
-                titleRow.click(titleToggle(content,chevron));
+                titleRow.click(titleToggle(tabNode.id,content,chevron));
                 editButton.on('click',function(evt) {
                     RED.editor.editConfig("", tabNode.type, tabNode.id);
                     evt.stopPropagation();
@@ -505,6 +498,76 @@ RED.nodes.registerType('ui_base',{
             }
         });
 
+        var orphanedWidgets = $('<div>',{class:"form-row"}).appendTo(form);
+        $('<span><i class="fa fa-info-circle"></i> There <span id="nr-db-missing-group-count"></span> not in a group. Click <a id="nr-db-add-missing-groups" href="#">here</a> to create the missing groups</span>').appendTo(orphanedWidgets);
+        orphanedWidgets.find('a').click(function(event) {
+            var unknownGroups = {};
+            RED.nodes.eachNode(function(node) {
+                console.log("TYPE",node.type);
+                if (/^ui_/.test(node.type) && node.type !== 'ui_link' && node.type !== 'ui_toast' && node.type !== 'ui_ui_control') {
+                    if (!RED.nodes.node(node.group)) {
+                        var g = node.group || "_BLANK_";
+                        unknownGroups[g] = unknownGroups[g] || [];
+                        unknownGroups[g].push(node);
+                    }
+                }
+            });
+            var tab = null;
+            var tabs = tabContainer.editableList('items');
+            tabs.first().each(function(i,el) {
+                var tabData = el.data('data');
+                tab = tabData.node;
+            });
+
+            if (tab === null) {
+                tab = {
+                    id: RED.nodes.id(),
+                    _def: RED.nodes.getType("ui_tab"),
+                    type: "ui_tab",
+                    users: [],
+                    order: 0,
+                    name: "Tab",
+                    icon: "dashboard"
+                };
+                RED.nodes.add(tab);
+            }
+            for (var groupId in unknownGroups) {
+                if (unknownGroups.hasOwnProperty(groupId)) {
+                    var groupNode = {
+                        id: RED.nodes.id(),
+                        _def: RED.nodes.getType("ui_group"),
+                        type: "ui_group",
+                        users: [],
+                        tab: tab.id,
+                        order: i+1,
+                        name: (groupId==="_BLANK_"?"Group":groupId),
+                        width: 6,
+                        disp: true
+                    };
+                    RED.nodes.add(groupNode);
+                    RED.editor.validateNode(groupNode);
+                    if (RED.nodes.hasOwnProperty('updateConfigNodeUsers')) {
+                        RED.nodes.updateConfigNodeUsers(groupNode);
+                    }
+                    var widgets = unknownGroups[groupId];
+                    for (var i=0;i<widgets.length;i++) {
+                        widgets[i].group = groupNode.id;
+                        widgets[i].changed = true;
+                        widgets[i].dirty = true;
+                        if (RED.nodes.hasOwnProperty('updateConfigNodeUsers')) {
+                            RED.nodes.updateConfigNodeUsers(widgets[i]);
+                        }
+                        RED.editor.validateNode(widgets[i]);
+                    }
+                }
+            }
+            RED.nodes.dirty(true);
+            refresh();
+            refreshOrphanedWidgets();
+            RED.view.redraw();
+            event.preventDefault();
+        });
+
         var divLinks = $('<div>',{class:"form-row",style:"position:relative"}).appendTo(form);
         $('<label>').html('Menu links').appendTo(divLinks);
 
@@ -521,7 +584,6 @@ RED.nodes.registerType('ui_base',{
             sortable: ".nr-db-sb-list-header",
             addButton: false,
             addItem: function(container,i,link) {
-                ensureDashboardNode(true);
                 if (!link.node) {
                     link.node = {
                         id: RED.nodes.id(),
@@ -572,21 +634,20 @@ RED.nodes.registerType('ui_base',{
         var dashboard = [];
         var listStates = {};
         var elementParents = {};
+        var awaitingGroups = {};
+        var awaitingTabs = {};
 
         function getCurrentList() {
             var currentList = [];
-            listStates = {};
             var tabs = tabContainer.editableList('items');
             var open = false;
             tabs.each(function(i,el) {
                 var tabData = el.data('data');
                 var tab = [];
-                listStates[tabData.node.id] = el.find('.nr-db-sb-group-list-container.nr-db-sb-collapsed').length === 0;
                 var groups = el.find('.nr-db-sb-group-list').editableList('items');
                 groups.each(function(j,el) {
                     var group = [];
                     var groupData = el.data('data');
-                    listStates[groupData.node.id] = el.find('.nr-db-sb-widget-list-container.nr-db-sb-collapsed').length === 0;
                     var widgets = el.find('.nr-db-sb-widget-list').editableList('items');
                     widgets.each(function(k,el) {
                         var widgetData = el.data('data');
@@ -598,6 +659,28 @@ RED.nodes.registerType('ui_base',{
             });
             return currentList;
         }
+        function refreshOrphanedWidgets() {
+            var unknownGroups = {};
+            var count = 0;
+            RED.nodes.eachNode(function(node) {
+                if (/^ui_/.test(node.type) && node.type !== 'ui_link' && node.type !== 'ui_toast' && node.type !== 'ui_ui_control') {
+                    if (!RED.nodes.node(node.group)) {
+                        var g = node.group || "_BLANK_";
+                        unknownGroups[g] = unknownGroups[g] || [];
+                        unknownGroups[g].push(node);
+                        count++;
+                    }
+                }
+            });
+
+            if (count > 0) {
+                orphanedWidgets.show();
+                $("#nr-db-missing-group-count").text((count===1?"is ":"are ")+count+" widget"+(count === 1?"":"s"))
+            } else {
+                orphanedWidgets.hide();
+            }
+        }
+
         function refresh() {
             var currentList = getCurrentList();
             dashboard = [];
@@ -611,6 +694,8 @@ RED.nodes.registerType('ui_base',{
             var tabId;
             var tab;
             var links = [];
+
+            var unknownGroups = 0;
 
             // Find all the tabs and groups
             RED.nodes.eachConfig(function(node) {
@@ -631,19 +716,32 @@ RED.nodes.registerType('ui_base',{
                         // This group belongs to a tab
                         tabGroups[group.tab] = tabGroups[group.tab]||[];
                         tabGroups[group.tab].push(group);
+                    } else {
+                        unknownGroups++;
                     }
                 }
             }
 
             // Find all ui widgets - list them by their group id
             RED.nodes.eachNode(function(node) {
-                if (/^ui_/.test(node.type) && groups.hasOwnProperty(node.group)) {
-                    groupElements[node.group] = groupElements[node.group]||[];
-                    groupElements[node.group].push(node);
-                } else if (node.type === 'ui_link') {
-                    links.push(node);
+                if (/^ui_/.test(node.type)) {
+                    if (groups.hasOwnProperty(node.group)) {
+                        groupElements[node.group] = groupElements[node.group]||[];
+                        groupElements[node.group].push(node);
+                    } else if (node.type === 'ui_link') {
+                        links.push(node);
+                    } else if ((node.type !== 'ui_toast')&&(node.type !== 'ui_ui_control')) {
+                        unknownGroups++;
+                    }
                 }
             });
+
+            if (unknownGroups > 0) {
+                $("#nr-db-missing-group-count").text((unknownGroups===1?"is ":"are ")+unknownGroups+" widget"+(unknownGroups === 1?"":"s"))
+                orphanedWidgets.show();
+            } else {
+                orphanedWidgets.hide();
+            }
 
             // Sort each group's array of widgets
             for (groupId in groupElements) {
@@ -660,20 +758,18 @@ RED.nodes.registerType('ui_base',{
             for (tabId in tabGroups) {
                 if (tabGroups.hasOwnProperty(tabId)) {
                     tab = tabGroups[tabId];
-                    tab = tab.map(function(v,i) { return {n:v,i:i} }).sort(function(A,B) {
+                    tabGroups[tabId] = tab.map(function(v,i) { return {n:v,i:i} }).sort(function(A,B) {
                         if (A.n.order < B.n.order) { return -1;}
                         if (A.n.order > B.n.order) { return 1;}
                         return A.i - B.i;
                     }).map(function(v) { return v.n})
                 }
             }
-
-            var tabIds = Object.keys(tabs).map(function(v,i) { return {id:v,i:i} }).sort(function(A,B) {
-                if (A.id.order < B.id.order) { return -1;}
-                if (A.id.order > B.id.order) { return 1;}
+            var tabIds = Object.keys(tabs).map(function(v,i) { return {n:tabs[v],i:i} }).sort(function(A,B) {
+                if (A.n.order < B.n.order) { return -1;}
+                if (A.n.order > B.n.order) { return 1;}
                 return A.i - B.i;
-            }).map(function(v) { return v.id});
-
+            }).map(function(v) { return v.n.id});
             tabIds.forEach(function(tabId) {
                 var tab = {node:tabs[tabId],groups:[]};
                 if (tabGroups[tabId]) {
@@ -732,6 +828,8 @@ RED.nodes.registerType('ui_base',{
                 $("#nr-db-field-theme").val(globalDashboardNode.theme);
                 // $("#nr-db-field-url").val(globalDashboardNode.url);
             }
+            awaitingGroups = {};
+            awaitingTabs = {};
         }
         RED.sidebar.addTab({
             id: "dashboard",
@@ -747,10 +845,16 @@ RED.nodes.registerType('ui_base',{
             if (/^ui_/.test(node.type)) {
                 if (node.type === "ui_tab" || node.type === "ui_group") {
                     if (listElements[node.id]) {
+                        // Existing element
                         listElements[node.id].children(".nr-db-sb-list-header").find(".nr-db-sb-title").html(node.name||node.id);
+                        if (node.type === "ui_group") {
+                            refresh();
+                        }
                     } else if (node.type === "ui_tab") {
+                        // Adding a tab
                         tabContainer.editableList('addItem',{node:node,groups:[]})
                     } else {
+                        // Adding a group
                         if (tabLists[node.tab]) {
                             tabLists[node.tab].editableList('addItem',{node:node,widgets:[]})
                         }
@@ -762,6 +866,7 @@ RED.nodes.registerType('ui_base',{
                         container.find(".nr-db-sb-link-url").html(node.link||"http://");
                     }
                 } else {
+                    refreshOrphanedWidgets();
                     if (listElements[node.id]) {
                         if (node.group != elementParents[node.id]) {
                             // Moved to a different group
@@ -789,28 +894,79 @@ RED.nodes.registerType('ui_base',{
                 }
             }
         });
-        RED.events.on("nodes:add", function(node) {
-            if (/^ui_/.test(node.type) && !listElements[node.id]) {
+
+        var pendingAdd = [];
+        var pendingAddTimer = null;
+
+        function handlePendingAdds() {
+            var hasTabs = false;
+            var hasGroups = false;
+            pendingAdd.sort(function(A,B) {
+                hasTabs = hasTabs || A.type === "ui_tab" || B.type === "ui_tab";
+                hasGroups = hasGroups || A.type === "ui_group" || B.type === "ui_group";
+                if (A.type === B.type) {
+                    return 0;
+                }
+                if (A.type === "ui_tab") {
+                    return -1;
+                } else if (B.type === "ui_tab") {
+                    return 1;
+                } else if (A.type === "ui_group") {
+                    return -1;
+                } else if (B.type === "ui_group") {
+                    return 1;
+                }
+                return 0
+            });
+            for (var i=0;i<pendingAdd.length;i++) {
+                var node = pendingAdd[i];
                 if (node.type === "ui_tab") {
                     tabContainer.editableList('addItem',{node:node,groups:[]});
-                } else if (node.type === "ui_group") {
-                    if (tabLists[node.tab]) {
-                        tabLists[node.tab].editableList('addItem',{node:node,widgets:[]});
-                    }
                 } else {
-                    if (groupLists[node.group]) {
-                        groupLists[node.group].editableList('addItem',node)
+                    if (hasTabs) {
+                        // We've added some tabs, need to give jquery time to add the lists
+                        pendingAdd = pendingAdd.slice(i);
+                        pendingAddTimer = setTimeout(handlePendingAdds,50);
+                        return;
+                    }
+                    if (node.type === "ui_group") {
+                        if (tabLists[node.tab]) {
+                            tabLists[node.tab].editableList('addItem',{node:node,widgets:[]});
+                        }
+                    } else {
+                        if (hasGroups) {
+                            // We've added some tabs, need to give jquery time to add the lists
+                            pendingAdd = pendingAdd.slice(i);
+                            pendingAddTimer = setTimeout(handlePendingAdds,50);
+                            return;
+                        }
+                        if (groupLists[node.group]) {
+                            groupLists[node.group].editableList('addItem',node)
+                        } else {
+                            refreshOrphanedWidgets();
+                        }
                     }
                 }
+            }
+            pendingAdd = [];
+        }
+
+        RED.events.on("nodes:add", function(node) {
+            if (/^ui_/.test(node.type) && !listElements[node.id]) {
+                pendingAdd.push(node);
+                clearTimeout(pendingAddTimer);
+                pendingAddTimer = setTimeout(handlePendingAdds,100);
             }
         });
         RED.events.on("nodes:remove", function(node) {
             if (/^ui_/.test(node.type)) {
                 if (node.type === "ui_tab") {
-                    tabContainer.editableList('removeItem',listElements[node.id].data('data'));
-                    delete tabLists[node.id];
+                    if (listElements[node.id]) {
+                        tabContainer.editableList('removeItem',listElements[node.id].data('data'));
+                        delete tabLists[node.id];
+                    }
                 } else if (node.type === "ui_group") {
-                    if (tabLists[node.tab]) {
+                    if (tabLists[node.tab] && listElements[node.id]) {
                         tabLists[node.tab].editableList('removeItem',listElements[node.id].data('data'));
                     }
                     delete groupLists[node.id];
@@ -824,6 +980,7 @@ RED.nodes.registerType('ui_base',{
                         groupLists[node.group].editableList('removeItem',node)
                     }
                 }
+                refreshOrphanedWidgets();
                 delete listElements[node.id];
             }
         })
@@ -836,7 +993,7 @@ RED.nodes.registerType('ui_base',{
             var that = this;
             var gridWidth = 6;
             var width = parseInt($(this.options.width).val()||0);
-            var height = parseInt(this.options.hasOwnProperty('height')?$(this.options.height).val():"1");
+            var height = parseInt(this.options.hasOwnProperty('height')?$(this.options.height).val():"1")||0;
             var hasAuto = (!this.options.hasOwnProperty('auto') || this.options.auto);
 
             this.element.css({
@@ -847,8 +1004,8 @@ RED.nodes.registerType('ui_base',{
                 evt.stopPropagation();
                 evt.preventDefault();
 
-                var width = parseInt($(that.options.width).val());
-                var height = parseInt(that.options.hasOwnProperty('height')?$(that.options.height).val():"1");
+                var width = parseInt($(that.options.width).val()||0);
+                var height = parseInt(that.options.hasOwnProperty('height')?$(that.options.height).val():"1")||0;
                 var maxWidth = 0;
                 var maxHeight;
                 var fixedWidth = false;

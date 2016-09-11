@@ -12,7 +12,8 @@ module.exports = function(RED) {
         addBaseConfig: addBaseConfig,
         emit: emit,
         toNumber: toNumber.bind(null, false),
-        toFloat: toNumber.bind(null, true)
+        toFloat: toNumber.bind(null, true),
+        updateUi: updateUi
     };
 };
 
@@ -29,9 +30,7 @@ var baseConfiguration = {
 
 var tabs = [];
 var links = [];
-
 var updateValueEventName = 'update-value';
-
 var io;
 var currentValues = {};
 var replayMessages = {};
@@ -44,7 +43,6 @@ var settings = {};
 
 function toNumber(keepDecimals, config, input) {
     if (typeof input === "number") { return input; }
-
     var inputString = input.toString();
     var nr = keepDecimals ? parseFloat(inputString) : parseInt(inputString);
     return isNaN(nr) ? config.min : nr;
@@ -59,7 +57,7 @@ function noConvert(value) {
 }
 
 function beforeEmit(msg, value) {
-    return { value: value };
+    return { value:value };
 }
 
 function beforeSend(msg) {
@@ -109,7 +107,6 @@ function add(opt) {
         if (typeof msg.enabled === 'boolean') {
             var state = replayMessages[opt.node.id];
             if (!state) { replayMessages[opt.node.id] = state = {id: opt.node.id}; }
-
             state.disabled = !msg.enabled;
             io.emit(updateValueEventName, state);
             return;
@@ -118,9 +115,8 @@ function add(opt) {
         var oldValue = currentValues[opt.node.id];
         var newValue = opt.convert(msg.payload, oldValue, msg);
 
-        if (typeof newValue !== 'undefined' && (!opt.emitOnlyNewValues || oldValue != newValue)) {
+        if (!opt.emitOnlyNewValues || oldValue != newValue) {
             currentValues[opt.node.id] = newValue;
-
             var toEmit = opt.beforeEmit(msg, newValue);
             toEmit.id = opt.node.id;
             io.emit(updateValueEventName, toEmit);
@@ -138,7 +134,6 @@ function add(opt) {
 
     var handler = function (msg) {
         if (msg.id !== opt.node.id) { return; }
-
         var converted = opt.convertBack(msg.value);
         if (opt.storeFrontEndInputAsState) {
             currentValues[msg.id] = converted;
@@ -191,7 +186,6 @@ function init(server, app, log, redSettings) {
         } else {
             log.info("Using development folder");
             app.use(join(settings.path), serveStatic(path.join(__dirname, "src")));
-
             var vendor_packages = [
                 'angular', 'angular-sanitize', 'angular-animate', 'angular-aria', 'angular-material',
                 'angular-material-icons', 'svg-morpheus', 'font-awesome',
@@ -200,27 +194,22 @@ function init(server, app, log, redSettings) {
                 'raphael', 'justgage',
                 'd3', 'nvd3', 'angularjs-nvd3-directives'
             ];
-
             vendor_packages.forEach(function (packageName) {
                 app.use(join(settings.path, 'vendor', packageName), serveStatic(path.join(__dirname, 'node_modules', packageName)));
             });
         }
     });
 
-    log.info("UI started at " + fullPath);
+    log.info("Dashboard started at " + fullPath);
 
     io.on('connection', function(socket) {
         updateUi(socket);
-
-        socket.on(updateValueEventName,
-            ev.emit.bind(ev, updateValueEventName));
-
+        socket.on(updateValueEventName, ev.emit.bind(ev, updateValueEventName));
         socket.on('ui-replay-state', function() {
             var ids = Object.getOwnPropertyNames(replayMessages);
             ids.forEach(function (id) {
                 socket.emit(updateValueEventName, replayMessages[id]);
             });
-
             socket.emit('ui-replay-done');
         });
     });
@@ -233,7 +222,6 @@ function updateUi(to) {
         updateUiPending = true;
         to = io;
     }
-
     process.nextTick(function() {
         tabs.forEach(function(t) {
             t.theme = baseConfiguration.theme;
@@ -292,7 +280,6 @@ function addControl(tab, groupHeader, control) {
     }
     foundGroup.items.push(control);
     foundGroup.items.sort(itemSorter);
-
     foundGroup.order = groupHeader.config.order;
     foundTab.items.sort(itemSorter);
 
@@ -320,7 +307,6 @@ function addControl(tab, groupHeader, control) {
                     }
                 }
             }
-
             updateUi();
         }
     }
@@ -348,7 +334,7 @@ function addLink(name, link, icon, order, target) {
 }
 
 function addBaseConfig(title,theme) {
-    baseConfiguration.title = title;
-    baseConfiguration.theme = theme;
+    if (title) { baseConfiguration.title = title; }
+    if (theme) { baseConfiguration.theme = theme; }
     updateUi();
 }

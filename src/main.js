@@ -5,8 +5,7 @@ app.config(['$mdThemingProvider', '$compileProvider',
         /*$mdThemingProvider.theme('default')
             .primaryPalette('light-green')
             .accentPalette('red');*/
-
-        //white-list all protocolos
+        //white-list all protocols
         $compileProvider.aHrefSanitizationWhitelist(/.*/);
     }]);
 
@@ -30,7 +29,7 @@ app.controller('MainController', ['$mdSidenav', '$window', 'UiEvents', '$locatio
         };
 
         this.open = function (link, index) {
-            //console.log(link);
+            // console.log("LINK",link,index);
             // open in new tab
             if (link.target === 'newtab') {
                 $window.open(link.link, link.name);
@@ -60,7 +59,6 @@ app.controller('MainController', ['$mdSidenav', '$window', 'UiEvents', '$locatio
             else {
                 main.select(0);
             }
-
             done();
         }, function () {
             main.loaded = true;
@@ -85,16 +83,49 @@ app.controller('MainController', ['$mdSidenav', '$window', 'UiEvents', '$locatio
                     found[key] = msg[key];
                 }
             }
+            if (found.hasOwnProperty("me") && found.me.hasOwnProperty("processInput")) {
+                found.me.processInput(msg);
+            }
         });
 
         events.on('show-toast', function (msg) {
             var toastScope = $rootScope.$new();
             toastScope.toast = msg;
-            $mdToast.show({
+            var opts = {
                 scope: toastScope,
                 templateUrl: 'partials/toast.html',
-                hideDelay: 3000,
-                position: 'top right'
-            });
+                hideDelay: msg.displayTime,
+                position: msg.position
+            };
+            $mdToast.show(opts);
+        });
+
+        events.on('ui-control', function(msg) {
+            if (msg.hasOwnProperty("tab")) { // if it's a request to change tabs
+                if (typeof msg.tab === 'string') {
+                    // is it the name of a tab ?
+                    for (var i in main.tabs) {
+                        if (msg.tab == main.tabs[i].header) {
+                            main.select(i);
+                            return;
+                        }
+                    }
+                    // or the name of a link ?
+                    for (var j in main.links) {
+                        if (msg.tab == main.links[j].name) {
+                            main.open(main.links[j], j);
+                            return;
+                        }
+                    }
+                }
+                // or is it a valid index number ?
+                var index = parseInt(msg.tab);
+                if (Number.isNaN(index) || index < 0) { return; }
+                if (index < main.tabs.length) { main.select(index); }
+                else if ((index - main.tabs.length) < main.links.length) {
+                    index -= main.tabs.length;
+                    main.open(main.links[index], index);
+                }
+            }
         });
     }]);

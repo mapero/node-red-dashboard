@@ -6,12 +6,14 @@
             group: {type: 'ui_group', required: true},
             order: {value: 0},
             width: {value: 0, validate: function(v) {
-                var currentGroup = $('#node-input-group').val()||this.group;
-                var groupNode = RED.nodes.node(currentGroup);
-                var valid = !groupNode || +v <=  +groupNode.width;
-                $("#node-input-size").toggleClass("input-error",!valid);
-                return valid;
-            }},
+                    var width = v||0;
+                    var currentGroup = $('#node-input-group').val()||this.group;
+                    var groupNode = RED.nodes.node(currentGroup);
+                    var valid = !groupNode || +width <= +groupNode.width;
+                    $("#node-input-size").toggleClass("input-error",!valid);
+                    return valid;
+                }
+            },
             height: {value: 0},
             name: {value: ''},
             mode: {value: 'text', required: true},
@@ -54,6 +56,7 @@
         <select style="width:128px" id="node-input-mode">
             <option value="text">text input</option>
             <option value="email">email address</option>
+            <option value="password">password</option>
             <option value="color">color picker</option>
         </select>
         <label for="node-input-delay" style="text-align:right; width:100px"><i class="fa fa-clock-o"></i> Delay (ms)</label>
@@ -74,13 +77,16 @@
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name">
     </div>
+    <div class="form-tips">Setting <b>Delay</b> to 0 waits for Enter key to send input.</span></div>
 </script>
 
 <script type="text/x-red" data-help-name="ui_text_input">
   <p>Adds a text input field to the user interface. Mode can be regular text, email or color picker.</p>
   <p>Text written by the user is sent in realtime as the <code>msg.payload</code>. You can also
   preset the text of the input field by sending in a <code>msg.payload</code>.</p>
-  <p>The <b>Delay</b> <i>(default : 300ms)</i> sets the amount of time in milliseconds before the output is sent.</p>
+  <p>The <b>Delay</b> <i>(default : 300ms)</i> sets the amount of time in milliseconds before the output is sent.
+  Setting to <code>0</code> waits for "Enter" key to send.</p>
   <p>The email mode will color in red if it is not a valid address and will return undefined.</p>
   <p>If a <b>Topic</b> is specified, it will be added as <code>msg.topic</code>.</p>
+  <p>Setting <code>msg.enabled</code> to <code>false</code> will disable the input.</p>
 </script>
